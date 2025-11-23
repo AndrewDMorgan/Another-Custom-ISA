@@ -60,4 +60,20 @@ Or any non-valid instruction keyword for starting the line, i.e.:       ; fyi, t
 
 ; in simple words, the parser skips non-valid operation keywords (only looking at the first word/token of the line)
 ```
+* Pages are another feature, although they're a bit more odd. Pages are to handle the fact that the ISA is 8-bit, but 256 instructions is hardly enough for most more complex applications. The solution, divide the read-only program memory into 256 pages of 256 instructions, providing 16-bits worth of instructions, a much more reasonable number. The downside, you have to manually index the pages, as you can't simply go to a 16-bit value from 8-bit registers and busses.
+```
+; the initial/main program goes here (this is where the computer begins reading; page 0 aka page 'main')
+
+; page names can't overlap with header names, keep them seperate
+!page PageName    ; this dictates a new page; the inital page is 'main' and where the program starts. Pages are sequential, so this page would be page 1 (the name is just an allias for the index, to simplify the code)
+
+; more code can go here
+
+; to jump between pages, there are currently four instructions: SetPage, Goto, SetPageReg, and GotoReg
+Goto page_name/page_index header_name/line_number
+SetPage 1   ; next time a Jmp instruction/branch instruction is used, this page will be appended to the new line number. However, it will only chage pages upon branching, until then it continues in the current page
+GotoReg page_name/page_index register   ; the register contains the line number to jump to (useful for a function return with a known page, but unknown line number)
+SetPageReg register    ; the register contains the page number (useful for function returns that return to an unknown page)
+; if SetPageReg is used, it could than be used in combination with JmpR to jump to an arbitrary line and an arbitary page (the SetPage changes the page upon branching, but the branch still changes the line it jumps to within the given page)
+```
 
