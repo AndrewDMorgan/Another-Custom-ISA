@@ -32,6 +32,11 @@ The assembler supports headers (can be invoked under a couple names) and macros.
 
 ; macros can be defined anywhere in the code (within reason.... duh, don't put it as an instruction's arg or it'll probably just crash)
 ; the parser simply splices them out before doing any further parsing, so they won't mess up byte indexes, or anything like that
+
+; macros can also have -export added after !macro to make them globally accessible (i.e. in any page of the program; by default they only are accessible in the page they're created in, and local names across file don't collide when renammed):
+!macro -export global_macro arg1
+    ; macro code goes here
+!end
 ```
 * Headers can be defined by doing any of the following (the different names all operate the same, and are really just syntax sugar for the same thing):
 ```
