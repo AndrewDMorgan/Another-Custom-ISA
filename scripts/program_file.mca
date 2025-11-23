@@ -1,5 +1,5 @@
 
-!macro name arg1 arg2 arg3
+!macro -export name arg1 arg2 arg3
     Add
     Ldi arg1 105
     Ldi arg2 105
@@ -35,4 +35,30 @@ Jmp HelloWorld
     Jmp A
     Jmp LoopA
 !end LoopA
+
+!macro run_inst inst_name arg1 arg2
+    inst_name arg1 arg2
+!end
+
+!macro odd_macro rda rdb Ldi
+    Ldi rda rdb
+!end
+
+run_inst Ldi rda 10
+odd_macro rda 10 Ldi
+
+Goto NewPage HelloWorldOnNewPage
+
+!page NewPage
+
+!header HelloWorldOnNewPage
+    Ldi rda 10
+    Add
+
+    recursive_macro
+
+!macro recursive_macro
+    Ldi rda 10
+    name rda rdb rdc
+!end
 

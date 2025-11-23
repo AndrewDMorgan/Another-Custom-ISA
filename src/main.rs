@@ -1,18 +1,19 @@
 
-fn get_macros(scripts: &mut Vec<Vec<String>>) -> Vec<(String, Vec<String>, Vec<Vec<String>>)> {
+fn get_macros(scripts: &mut Vec<Vec<String>>, global_macros: &mut Vec<(String, Vec<String>, Vec<Vec<String>>)>) -> Vec<(String, Vec<String>, Vec<Vec<String>>)> {
     let mut macros = vec![];
     let mut line_number = 0;
     while line_number < scripts.len() {
         if scripts[line_number][0] == "!macro" {
+            let start_offset = if scripts[line_number][1] == "-export" { 1 } else { 0 };
             // parsing the macro
-            let name = scripts[line_number][1].clone();
-            let args = scripts[line_number][2..].iter().map(|t| t.clone()).collect::<Vec<String>>();
+            let name = scripts[line_number][1 + start_offset].clone();
+            let args = scripts[line_number][2 + start_offset..].iter().map(|t| t.clone()).collect::<Vec<String>>();
             // finding the ending line
             let end_line = scripts[line_number + 1..]
                 .iter()
                 .position(|line| line[0] == "!end")
                 .unwrap() + line_number + 1;
-            macros.push((
+            let macro_def = (
                 name,
                 args,
                 scripts[line_number + 1..end_line]
@@ -21,7 +22,9 @@ fn get_macros(scripts: &mut Vec<Vec<String>>) -> Vec<(String, Vec<String>, Vec<V
                         line.iter()
                         .map(|t| t.to_string())
                         .collect::<Vec<String>>())
-                    .collect::<Vec<Vec<String>>>()));
+                    .collect::<Vec<Vec<String>>>());
+            if start_offset == 1 { global_macros.push(macro_def); }
+            else { macros.push(macro_def); }
             scripts.drain(line_number..=end_line);
             continue;
         }
@@ -29,10 +32,11 @@ fn get_macros(scripts: &mut Vec<Vec<String>>) -> Vec<(String, Vec<String>, Vec<V
     } macros
 }
 
-fn expand_macro_calls(lines: &mut Vec<Vec<String>>, macros: Vec<(String, Vec<String>, Vec<Vec<String>>)>) {
+fn expand_macro_calls(lines: &mut Vec<Vec<String>>, macros: &Vec<(String, Vec<String>, Vec<Vec<String>>)>) {
     let mut line_number = 0;
     while line_number < lines.len() {
         if macros.iter().any(|(m,..)| lines[line_number][0] == *m) {
+            let starting_line = line_number;
             let mac = lines.remove(line_number);
             let (_name, args, body) = macros.iter().find(|(m,..)| m == &mac[0]).unwrap();
             for line in body {
@@ -40,13 +44,12 @@ fn expand_macro_calls(lines: &mut Vec<Vec<String>>, macros: Vec<(String, Vec<Str
                 let new_line = line.iter().map(|t| {
                     if let Some(arg_index) = args.iter().position(|a| a == t) {
                         mac[arg_index + 1].to_string()
-                    } else {
-                        t.to_string()
-                    }
+                    } else { t.to_string() }
                 }).collect::<Vec<String>>();
                 lines.insert(line_number, new_line);
                 line_number += 1;
             }
+            line_number = starting_line;  // making sure a macro can recursively expand additional macros
             continue;
         }
         line_number += 1;
@@ -64,6 +67,11 @@ static OP_CODES: &[(u8, usize, &str)] = &[
     (0b000_00110, 0, "SetPtr"),
     (0b000_00111, 0, "PgcL"),
     (0b000_01000, 0, "PgcR"),
+    (0b000_01001, 0, "Plt"),
+    (0b000_01010, 1, "SetPage"),
+    (0b000_01011, 2, "Goto"),
+    (0b000_01100, 2, "GotoReg"),
+    (0b000_01101, 1, "SetPageReg"),
     (0b001_00000, 0, "Add"),
     (0b001_00001, 0, "Sub"),
     (0b001_00010, 0, "Inc"),
@@ -82,6 +90,7 @@ static OP_CODES: &[(u8, usize, &str)] = &[
     (0b010_00011, 0, "OvrFlow"),
     (0b010_00100, 0, "SetC"),
     (0b010_00101, 0, "RsetC"),
+    (0b010_00110, 0, "Zero"),
     (0b011_00000, 1, "LodL"),
     (0b011_00001, 1, "LodR"),
     (0b011_00010, 1, "WrtO"),
@@ -130,7 +139,38 @@ static REGISTERS: &[&str] = &[
     "rdl",
 ];
 
-fn compile_script(mut script: Vec<Vec<String>>) -> Vec<u32> {
+fn compile_script(pages: &mut Vec<(Vec<Vec<String>>, String)>, headers: &Vec<(String, usize, usize)>, script_index: usize) -> Vec<u32> {
+    for line_index in 0..pages[script_index].0.len() {
+        for token_index in 0..pages[script_index].0[line_index].len() {
+            if let Some(reg_index) = REGISTERS.iter().position(|r| r == &pages[script_index].0[line_index][token_index]) {
+                pages[script_index].0[line_index][token_index] = (reg_index as u32).to_string();
+            }
+            if let Some(header_index) = headers.iter().position(|h| h.0 == *pages[script_index].0[line_index][token_index]) {
+                pages[script_index].0[line_index][token_index] = (headers[header_index].1).to_string();
+            }
+            let token = &pages[script_index].0[line_index][token_index];
+            if let Some(page_index) = pages.iter().position(|(_, page_name)| page_name == token) {
+                pages[script_index].0[line_index][token_index] = page_index.to_string();
+            }
+        }
+    }
+    println!("Final Tokens: {:?}", pages[script_index].0);
+    let mut bytecode = vec![];
+    for line in &pages[script_index].0 {
+        // replacing any headers mentioned with their index
+        let op = OP_CODES.iter().find(|(_, _, name)| name == &line[0]);
+        if let Some(op) = op {
+            let mut instruction = (op.0 as u32) << 24;
+            for i in 0..op.1 {
+                instruction |= (line[i + 1].parse::<u8>().unwrap() as u32) << (24 - 8 * (i + 1));
+            }
+            bytecode.push(instruction);
+        }
+    } bytecode
+}
+
+// name line page
+fn generate_headers(script: &Vec<Vec<String>>, page: usize) -> Vec<(String, usize, usize)> {
     // calculating header indexes
     let mut true_index = 0;
     let mut headers = vec![];
@@ -138,36 +178,13 @@ fn compile_script(mut script: Vec<Vec<String>>) -> Vec<u32> {
         // checking for a header defintion
         if ["!header", "!end", "!loop"].contains(&&*line[0]) {
             // getting the name
-            headers.push((line[1].clone(), true_index));
+            headers.push((line[1].clone(), true_index, page));
             continue;  // this isn't a valid instruction and as such shouldn't be included in the bytecode
         }
         // invalid instruction, skipping (maybe a comment or something)
         if OP_CODES.iter().find(|(_, _, name)| name == &line[0]).is_none() {  continue; }
         true_index += 1;
-    }
-    for line in script.iter_mut() {
-        for token in line.iter_mut() {
-            if let Some(reg_index) = REGISTERS.iter().position(|r| r == token) {
-                *token = (reg_index as u32).to_string();
-            }
-            if let Some(header_index) = headers.iter().position(|h| h.0 == *token) {
-                *token = (headers[header_index].1).to_string();
-            }
-        }
-    }
-    println!("Final Tokens: {:?}", script);
-    let mut bytecode = vec![];
-    for line in script {
-        // replacing any headers mentioned with their index
-        let op = OP_CODES.iter().find(|(_, _, name)| name == &line[0]);
-        if let Some(op) = op {
-            let mut instruction = (op.0 as u32) << 24;
-            for i in 0..op.1 {
-                instruction |= (line[i + 1].parse::<u8>().unwrap() as u32) << (24 - 8 * i);
-            }
-            bytecode.push(instruction);
-        }
-    } bytecode
+    } headers
 }
 
 fn main() {
@@ -183,16 +200,30 @@ fn main() {
         })
         .collect::<Vec<Vec<String>>>();
     script.retain(|line| !line.is_empty());
-    println!("Tokens: {:?}", script);
-    // collecting all macros
-    let macros = get_macros(&mut script);
-    println!("Macros: {:?}", macros);
-    println!("Tokens: {:?}", script);
-    expand_macro_calls(&mut script, macros);
-    println!("Tokens: {:?}", script);
-    let bytes = compile_script(script);
-    println!("{}", bytes.iter().enumerate()
-        .map(|(index, byte)| format!("{:>3}: {}\n\n", index, format!("{:032b}", byte)
-            .chars().map(|c| format!(" {} ", c)).collect::<String>()
-        )).collect::<String>());
+    let mut pages = vec![(vec![], "main".to_string())];
+    let mut global_macros = vec![];
+    for line in script {
+        if line[0] == "!page" { pages.push((vec![], line[1].clone())); }
+        else { pages.last_mut().unwrap().0.push(line); }
+    }
+    let mut headers = vec![];
+    for (page, script) in pages.iter_mut().enumerate() {
+        //println!("Tokens: {:?}", script);
+        // collecting all macros
+        let macros = get_macros(&mut script.0, &mut global_macros);
+        //println!("Macros: {:?}", macros);
+        //println!("Tokens: {:?}", script);
+        expand_macro_calls(&mut script.0, &macros);
+        expand_macro_calls(&mut script.0, &global_macros);
+        //println!("Tokens: {:?}", script);
+        headers.append(&mut generate_headers(&mut script.0, page));
+    }
+
+    for script_index in 0..pages.len() {
+        let bytes = compile_script(&mut pages, &headers, script_index);
+        println!("{}", bytes.iter().enumerate()
+            .map(|(index, byte)| format!("{:>3}: {}\n\n", index, format!("{:032b}", byte)
+                .chars().map(|c| format!(" {} ", c)).collect::<String>()
+            )).collect::<String>());
+    }
 }
