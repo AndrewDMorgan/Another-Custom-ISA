@@ -9,7 +9,7 @@ It includes both the general planned layout, and the individual instructions for
 
 
 The assembler supports headers (can be invoked under a couple names) and macros.
-> Macros are created by doing:
+* Macros are created by doing:
 ```
 !macro macro_name arg1 arg2 arg3    ...(further args listed)   note that comments can't go on this line or it'll use them as args
     ; code can go here
@@ -33,7 +33,7 @@ The assembler supports headers (can be invoked under a couple names) and macros.
 ; macros can be defined anywhere in the code (within reason.... duh, don't put it as an instruction's arg or it'll probably just crash)
 ; the parser simply splices them out before doing any further parsing, so they won't mess up byte indexes, or anything like that
 ```
-> Headers can be defined by doing any of the following (the different names all operate the same, and are really just syntax sugar for the same thing):
+* Headers can be defined by doing any of the following (the different names all operate the same, and are really just syntax sugar for the same thing):
 ```
 !header header_name
 
@@ -46,7 +46,7 @@ The assembler supports headers (can be invoked under a couple names) and macros.
 ; so, you could do:
 Ldi header_name   ; and this is valid, as it's loading the line the header originates on
 ```
-> Comments are done as following:
+* Comments are done as following:
 ```
 ; Semi-colons in traditional assembly fassion
 # Python style comments
@@ -57,5 +57,7 @@ Or any non-valid instruction keyword for starting the line, i.e.:       ; fyi, t
     Ldi rda        ; invalid (would be parsed as an instruction)
     Ldi register   ; invalid (would be parsed as an instruction, and would crash due to an invalid register name)
 ; Tokens are broken up purely by spaces, unlike in many programming languages where most symbols, like +, -, etc. also break up tokens
+
+; in simple words, the parser skips non-valid operation keywords (only looking at the first word/token of the line)
 ```
 
