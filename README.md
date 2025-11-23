@@ -45,11 +45,12 @@ The assembler supports headers (can be invoked under a couple names) and macros.
 !loop loop_name
 
 ; note that this is different from the !end used in !macro as that is spliced out before headers are parsed
+; note that header names, regardless of the name used for generating it, cannot overlap, and they also can't overlap with !page names (main is used as the default for the first page, and is therefore reserved)
 !end header_end_name
 
 ; anywhere the header is used, the parser automatically expands it into the raw byte index
 ; so, you could do:
-Ldi header_name   ; and this is valid, as it's loading the line the header originates on
+Ldi rda header_name   ; and this is valid, as it's loading the line the header originates on
 ```
 * Comments are done as following:
 ```
