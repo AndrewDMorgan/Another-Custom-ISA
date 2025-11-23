@@ -1,0 +1,38 @@
+
+!macro name arg1 arg2 arg3
+    Add
+    Ldi arg1 105
+    Ldi arg2 105
+    Ldi arg3 105
+!end
+
+tester
+
+!macro other_mac
+    Ldi rda 1
+    Ldi rdb 2
+    LodL rda
+    LodR rdb
+    Add
+    WrtO rdc
+!end
+
+LdiD 25 253
+
+other_mac
+
+Jmp HelloWorld
+
+!header HelloWorld
+    nope
+    noo
+    no
+    name rda rdb rdc
+    ep
+    ello
+
+!loop A
+    Jmp A
+    Jmp LoopA
+!end LoopA
+
