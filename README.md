@@ -18,6 +18,7 @@ The assembler supports headers (can be invoked under a couple names) and macros.
 !end  ; ends the macro
 
 ; you could probably use valid operations as the name for args, or use an arg for the instruction, and it'd probably word
+; this does seem to work, but wasn't entirely intentional, but should work, but if it doesn't it's not my fault
 !macro other_macro_name rda arg2 Ldi
     Ldi rda arg2   ; this assumes Ldi is a valid instruction and is being provided valid inputs
 !end
@@ -28,6 +29,9 @@ The assembler supports headers (can be invoked under a couple names) and macros.
     ; note that whitespace is purely syntax sugar and doesn't matter, it really is only for readability here (and is recommended for that reason)
     instruction_name_arg instruction_arg1 instruction_arg_2
 !end
+
+; macros can be defined anywhere in the code (within reason.... duh, don't put it as an instruction's arg or it'll probably just crash)
+; the parser simply splices them out before doing any further parsing, so they won't mess up byte indexes, or anything like that
 ```
 > Headers can be defined by doing any of the following (the different names all operate the same, and are really just syntax sugar for the same thing):
 ```
