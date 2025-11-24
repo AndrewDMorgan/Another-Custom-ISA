@@ -17,7 +17,7 @@ tester
     WrtO rdc
 !end
 
-LdiD 25 253
+DLdi 25 253
 
 other_mac
 
@@ -61,4 +61,11 @@ Goto NewPage HelloWorldOnNewPage
     Ldi rda 10
     name rda rdb rdc
 !end
+
+!macro macro_header header_name
+    !header header_name
+        Ldi rda 10
+!end
+
+macro_header MacroHeaderTest
 

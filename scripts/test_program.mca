@@ -12,4 +12,13 @@ PshCon 1   ; this is just pushing the 0 and 1 onto it, which is pre-loaded into 
     WrtO rda  ; Writing the output (aka the old rdb, i.e. the previous result) to rda which represents the new previous result
     OvrFlow   ; setting the condition flag to the overflow flag's state
     Jnz FibLoop  ; jumping if the condition flag is true, aka if an overflow happened
-Kill  ; ending the program
+Pop   ; removing the overflowed value from the stack (mostly just testing pop to ensure it's working)
+Goto program_start new_page
+Kill  ; ending the program (technically unreachable code, but whatever)
+
+!page new_page     ; just to test paging
+
+!header program_start
+    PshCon 5
+    PshCon 5
+    Kill  ; ending the program

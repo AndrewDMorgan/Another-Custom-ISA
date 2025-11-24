@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 
 fn get_macros(scripts: &mut Vec<Vec<String>>, global_macros: &mut Vec<(String, Vec<String>, Vec<Vec<String>>)>) -> Vec<(String, Vec<String>, Vec<Vec<String>>)> {
     let mut macros = vec![];
@@ -71,7 +69,7 @@ static OP_CODES: &[(u8, usize, [usize; 3], &str)] = &[
     (0b000_01000, 0, [0, 0, 0], "PgcR"),
     (0b000_01001, 0, [0, 0, 0], "Plt"),
     (0b000_01010, 1, [1, 0, 0], "SetPage"),
-    (0b000_01011, 2, [1, 0, 0], "Goto"),
+    (0b000_01011, 2, [1, 1, 0], "Goto"),
     (0b000_01100, 2, [0, 1, 0], "GotoReg"),
     (0b000_01101, 1, [0, 0, 0], "SetPageReg"),
     (0b001_00000, 0, [0, 0, 0], "Add"),
@@ -115,9 +113,9 @@ static OP_CODES: &[(u8, usize, [usize; 3], &str)] = &[
     (0b101_00100, 0, [0, 0, 0], "DPtrR"),
     (0b101_00101, 0, [0, 0, 0], "DPtrO"),
     (0b101_00110, 2, [0, 0, 0], "DLdi"),
-    (0b110_00000, 1, [1, 0, 0], "Jmp"),
-    (0b110_00001, 1, [1, 0, 0], "Jiz"),
-    (0b110_00010, 1, [1, 0, 0], "Jnz"),
+    (0b110_00000, 1, [0, 0, 0], "Jmp"),
+    (0b110_00001, 1, [0, 0, 0], "Jiz"),
+    (0b110_00010, 1, [0, 0, 0], "Jnz"),
     (0b110_00011, 1, [0, 0, 0], "JmpR"),
     (0b110_00100, 1, [0, 0, 0], "JizR"),
     (0b110_00101, 1, [0, 0, 0], "JnzR"),
@@ -140,6 +138,10 @@ static REGISTERS: &[&str] = &[
     "rdj",
     "rdk",
     "rdl",
+    "rdm",
+    "rdn",
+    "rdo",
+    "rdp",
 ];
 
 fn compile_script(pages: &mut Vec<(Vec<Vec<String>>, String)>, headers: &Vec<(String, usize, usize)>, script_index: usize) -> Vec<u32> {
@@ -158,6 +160,7 @@ fn compile_script(pages: &mut Vec<(Vec<Vec<String>>, String)>, headers: &Vec<(St
         }
     }
     println!("Final Tokens: {:?}", pages[script_index].0);
+    let mut true_index = 0;
     let mut bytecode = vec![];
     for line in &pages[script_index].0 {
         // replacing any headers mentioned with their index
@@ -168,6 +171,8 @@ fn compile_script(pages: &mut Vec<(Vec<Vec<String>>, String)>, headers: &Vec<(St
                 instruction |= (line[i + 1].parse::<u8>().unwrap() as u32) << (24 - 8 * (i + 1 + op.2[i]));
             }
             bytecode.push(instruction);
+            println!("{:<3}: {:?}", true_index, line);
+            true_index += 1;
         }
     } bytecode
 }
@@ -191,7 +196,7 @@ fn generate_headers(script: &Vec<Vec<String>>, page: usize) -> Vec<(String, usiz
 }
 
 fn main() {
-    let script = std::fs::read_to_string("scripts/test_program.mca").unwrap();
+    let script = std::fs::read_to_string("scripts/function_test.mca").unwrap();
     let mut script = script
         .lines()
         .map(|line| line.split(" ").collect::<Vec<&str>>())
@@ -233,10 +238,10 @@ fn main() {
     }
 
     // running the emulator
-    run_emmulator(program_bytes);
+    run_emulator(program_bytes);
 }
 
-fn run_emmulator(program_bytes: Vec<Vec<u32>>) {
+fn run_emulator(program_bytes: Vec<Vec<u32>>) {
     // memory
     let mut registers = [0u8; 256];
     let mut ram = [0u8; 256];
@@ -260,6 +265,11 @@ fn run_emmulator(program_bytes: Vec<Vec<u32>>) {
     let time_start = std::time::Instant::now();
 
     loop {
+        println!("PC: {}, ALU Left: {}, ALU Right: {}, ALU Out: {}, Overflow Flag: {}, Condition Flag: {}", program_counter, alu_left, alu_right, alu_out, overflow_flag, condition_flag);
+        println!("First 10 registers: {:?}", &registers[..10]);
+        println!("First 20 of stack: {:?}", &stack[..20]);
+        std::thread::sleep(std::time::Duration::from_secs_f32(0.1));
+
         cycle += 1;
 
         let instruction = program_bytes[(program_counter >> 8) as usize][(program_counter & 0xFF) as usize];
@@ -338,15 +348,15 @@ fn run_emmulator(program_bytes: Vec<Vec<u32>>) {
         if !jumped {
             program_counter += 1;
         }
-
-        //println!("PC: {}, ALU Left: {}, ALU Right: {}, ALU Out: {}, Overflow Flag: {}, Condition Flag: {}", program_counter, alu_left, alu_right, alu_out, overflow_flag, condition_flag);
-        //println!("First 10 registers: {:?}", &registers[..10]);
-        //println!("First 20 of stack: {:?}", &stack[..20]);
-        //std::thread::sleep(Duration::from_secs_f32(0.1));
     }
 
+    println!("PC: {}, ALU Left: {}, ALU Right: {}, ALU Out: {}, Overflow Flag: {}, Condition Flag: {}", program_counter, alu_left, alu_right, alu_out, overflow_flag, condition_flag);
+    println!("First 10 registers: {:?}", &registers[..10]);
+    println!("First 20 of stack: {:?}", &stack[..20]);
+    std::thread::sleep(std::time::Duration::from_secs_f32(0.1));
+
     let end = time_start.elapsed().as_secs_f64() / cycle as f64;
-    println!("Average Cycle Time: {} seconds, which is about {} operations per second", end, 1.0 / end);
+    println!("Average Cycle Time: {} seconds, which is about {} operations per second over {} cycles", end, 1.0 / end, cycle);
 }
 
 fn run_alu(op_code: u8, immediate: u8, left: &mut u8, right: &mut u8, out: &mut u8, overflow_flag: &mut bool, condition_flag: &mut bool) {
@@ -385,11 +395,11 @@ fn run_alu(op_code: u8, immediate: u8, left: &mut u8, right: &mut u8, out: &mut 
 
 fn run_lu(op_code: u8, condition_flag: bool, next_page_reg: u8, program_counter_reg: &mut u16, registers: &[u8; 256], jumped: &mut bool, immediate: u8, immediate_2: u8, reg_or_add: u8) {
     match op_code {
-        0b000_01011 => { *jumped = true; *program_counter_reg = (immediate as u16 | ((immediate_2 as u16) << 8)); },  // "Goto"
+        0b000_01011 => { *jumped = true; *program_counter_reg = immediate as u16 | ((immediate_2 as u16) << 8); },  // "Goto"
         0b000_01100 => { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((next_page_reg as u16) << 8); },  // "GotoReg"
         0b110_00000 => { *jumped = true; *program_counter_reg = reg_or_add as u16 | ((next_page_reg as u16) << 8); },  // "Jmp"
-        0b110_00001 => { if condition_flag { *jumped = true; *program_counter_reg = immediate as u16 | ((next_page_reg as u16) << 8); } },  // "Jiz"
-        0b110_00010 => { if !condition_flag { *jumped = true; *program_counter_reg = immediate as u16 | ((next_page_reg as u16) << 8); } },  // "Jnz"
+        0b110_00001 => { if condition_flag { *jumped = true; *program_counter_reg = reg_or_add as u16 | ((next_page_reg as u16) << 8); } },  // "Jiz"
+        0b110_00010 => { if !condition_flag { *jumped = true; *program_counter_reg = reg_or_add as u16 | ((next_page_reg as u16) << 8); } },  // "Jnz"
         0b110_00011 => { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((next_page_reg as u16) << 8); },  // "JmpR"
         0b110_00100 => { if condition_flag { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((next_page_reg as u16) << 8); } },  // "JizR"
         0b110_00101 => { if !condition_flag { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((next_page_reg as u16) << 8); } },  // "JnzR"
