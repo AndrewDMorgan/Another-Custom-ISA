@@ -47,7 +47,8 @@ The assembler supports headers (can be invoked under a couple names), pages, mac
 
 ; note: you cannot create headers or pages within macros, as everytime it gets expanded, it'll mention the header
 ; with one exception though (as always):
-!macro new_mac! header_arg_name  ; (unrelated) technically speaking, since the parser only divides tokens by space, you can include symbols and other things in the names
+; (unrelated) technically speaking, since the parser only divides tokens by space, you can include symbols and other things in the names
+!macro new_mac! header_arg_name
     !header header_arg_name    ; this should in theory work as long as each time it's used it's given a unique header name; similar to before, the parser replaces the argument before doing any further parsing
     ; you could also use !loop, or other alias's for !header, but you cannot use !page, as the pages are created before macro expansion, and as such will both cut the macro in-half, and incorrectly parse everything
 !end
