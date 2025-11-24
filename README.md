@@ -8,7 +8,7 @@ https://docs.google.com/spreadsheets/d/1EU0HqW1YHJIZ-7ZNyb768a9Qf3rkegkdOBP46fiW
 It includes both the general planned layout, and the individual instructions for the ISA (including the binary encoding for those instructions)
 
 
-The assembler supports headers (can be invoked under a couple names) and macros.
+The assembler supports headers (can be invoked under a couple names), pages, macros, and more.
 * Macros are created by doing:
 ```
 !macro macro_name arg1 arg2 arg3    ...(further args listed)   note that comments can't go on this line or it'll use them as args
@@ -36,6 +36,20 @@ The assembler supports headers (can be invoked under a couple names) and macros.
 ; macros can also have -export added after !macro to make them globally accessible (i.e. in any page of the program; by default they only are accessible in the page they're created in, and local names across file don't collide when renammed):
 !macro -export global_macro arg1
     ; macro code goes here
+!end
+
+; macros can also use other macros inside themselves, and the expansion will correctly expand it all
+; however, if you have a macro calling itself inside the definition, it will result in the application freezing as it tries to infinitely expand the macro
+!macro using_global_macro
+    ; using the global macro defined above inside the macro
+    global_macro arg1  ; local macros defined within the page could also be used here
+!end
+
+; note: you cannot create headers or pages within macros, as everytime it gets expanded, it'll mention the header
+; with one exception though (as always):
+!macro new_mac! header_arg_name  ; (unrelated) technically speaking, since the parser only divides tokens by space, you can include symbols and other things in the names
+    !header header_arg_name    ; this should in theory work as long as each time it's used it's given a unique header name; similar to before, the parser replaces the argument before doing any further parsing
+    ; you could also use !loop, or other alias's for !header, but you cannot use !page, as the pages are created before macro expansion, and as such will both cut the macro in-half, and incorrectly parse everything
 !end
 ```
 * Headers can be defined by doing any of the following (the different names all operate the same, and are really just syntax sugar for the same thing):
