@@ -17,7 +17,7 @@ The assembler supports headers (can be invoked under a couple names), pages, mac
     Ldi arg1    ; no special tokens, like a $, #, or {...} are necessary here
 !end  ; ends the macro
 
-; you could probably use valid operations as the name for args, or use an arg for the instruction, and it'd probably word
+; you could probably use valid operations as the name for args, or use an arg for the instruction, and it'd probably work
 ; this does seem to work, but wasn't entirely intentional, but should work, but if it doesn't it's not my fault
 !macro other_macro_name rda arg2 Ldi
     Ldi rda arg2   ; this assumes Ldi is a valid instruction and is being provided valid inputs
