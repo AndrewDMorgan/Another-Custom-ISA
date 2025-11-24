@@ -82,4 +82,48 @@ GotoReg page_name/page_index register   ; the register contains the line number 
 SetPageReg register    ; the register contains the page number (useful for function returns that return to an unknown page)
 ; if SetPageReg is used, it could than be used in combination with JmpR to jump to an arbitrary line and an arbitary page (the SetPage changes the page upon branching, but the branch still changes the line it jumps to within the given page)
 ```
+* Flags are an essential feature of an ISA, as they allow for conditional branching. Below is information on the flags and nuances:
+```
+; the first flag, and the one used in all conditional branches, is the condition flag
+; the condition flag is set by certain ALU operations, or logical operations (check the google sheets for more info)
+; however, those same operations do NOT reset the flag, so something like `RsetC` would be necessary to correctly reset it after using it
 
+; the other flag is the overflow flag
+; the overflow flag doesn't directly act upon any conditional branching
+; however, the `OvrFlow` instruction sets the condition flag to the overflow flag's current state, allowing it to be used
+; also check the documention for the cases in which this happens
+; this flag also does not reset, similar to the condition flag, but `RsetO` can be used to reset it to false
+```
+* The ALU is slightly different than many systems, in that you can't call an operation, like add, while providing where to gather the data:
+```
+; you may notice that the ALU operations have no arguments:
+Add   ; this is the full instruciton
+; that is because it instead uses the dedicated alu_left and alu_right registers, and it outputs to the alu_out register
+; the alu_left/right registers cannot be written back to memory, so to retrieve the values, you'd need to use `ThruL` or `ThruR` to push it into the output
+; alu_out can be pushed to memory, but not straight into the left/right alu registers
+; example for subtracting registers rda from rdb
+LodL rdb   ; moving rdb to alu left
+LodR rda   ; moving rda to alu right
+Sub        ; left - right, so rdb - rda; similar to the Add instruction, there are no arguments provided for this operation
+WrtO rdc   ; storing the output from alu_out in teh rdc register
+; while this can bloat binary sizes, it also makes the instruction set far simpler at the hardware level, allowing for more efficent compution
+; for that same reason of simplicity, you also cannot write a register into another register directly, but instead need to use the alu input registers, and move it into the output before storing it again
+```
+* Example (below is the fibonacci sequence):
+```
+Ldi rda 0  ; previous result
+Ldi rdb 1  ; current result
+PshCon 0   ; the stack is purely for visualization
+PshCon 1   ; this is just pushing the 0 and 1 onto it, which is pre-loaded into rda and rdb
+!loop FibLoop
+    LodL rda  ; Loading the previous result
+    LodR rdb  ; Loading the current result
+    Add       ; Adding them to get F(n+1)
+    WrtO rdb  ; Writing the result to rdb, which is the register holding the current result
+    PshO      ; Pushing the result to the stack for visualization
+    ThruR     ; Brining the right alu register into the alu output register (the alu_right reg currently stores the previous rdb, before it was overwritten)
+    WrtO rda  ; Writing the output (aka the old rdb, i.e. the previous result) to rda which represents the new previous result
+    OvrFlow   ; setting the condition flag to the overflow flag's state
+    Jnz FibLoop  ; jumping if the condition flag is true, aka if an overflow happened
+Kill  ; ending the program
+```
