@@ -1,0 +1,15 @@
+Ldi rda 0  ; previous result
+Ldi rdb 1  ; current result
+PshCon 0   ; the stack is purely for visualization
+PshCon 1   ; this is just pushing the 0 and 1 onto it, which is pre-loaded into rda and rdb
+!loop FibLoop
+    LodL rda  ; Loading the previous result
+    LodR rdb  ; Loading the current result
+    Add       ; Adding them to get F(n+1)
+    WrtO rdb  ; Writing the result to rdb, which is the register holding the current result
+    PshO      ; Pushing the result to the stack for visualization
+    ThruR     ; Brining the right alu register into the alu output register (the alu_right reg currently stores the previous rdb, before it was overwritten)
+    WrtO rda  ; Writing the output (aka the old rdb, i.e. the previous result) to rda which represents the new previous result
+    OvrFlow   ; setting the condition flag to the overflow flag's state
+    Jnz FibLoop  ; jumping if the condition flag is true, aka if an overflow happened
+Kill  ; ending the program
