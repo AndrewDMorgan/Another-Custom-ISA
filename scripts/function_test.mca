@@ -1,16 +1,16 @@
 ; calls a given function (header/line index and page index/name)
-!macro call function_arg page_arg
+!macro -export call function_arg page_arg current_page
     LdiR 5  ; loading 5 to the right alu register, to add to the line number (5 instructions are added after this
     PgcL    ; the left register contains the current line
     Add     ; adding the two together
     PshO    ; pushing the result onto the stack
-    PshCon page_arg  ; pushing the current page onto the stack
+    PshCon current_page  ; pushing the current page onto the stack
     Goto function_arg page_arg   ; this should actually jump to the function
     ; it should jump to here upon exit (i.e. the next line, which is outside this macro)
 !end
 
 ; returns from a function, assuming the return address is on the top of the stack
-!macro ret
+!macro -export ret
     TopL      ; load the left alu register with the top of the stack
     Pop       ; removing the top element (TopL doesn't pop, and pop doesn't return a value, so both are needed)
     ThruL     ; loading the return page into alu_out to get it into a register
@@ -40,13 +40,21 @@ Jmp Start
     Add          ; adding them to set the overflow flag
     OvrFlow      ; setting the condition flag
     Jiz TestFuncEnd  ; jumping to the end if overflow occurred (to stop infinite recursion)
-    call TestFunction main  ; recursively calling itself to test stack behavior
+    call TestFunction main main  ; recursively calling itself to test stack behavior
 !end TestFuncEnd
     ret          ; returning to the caller
 
 !header Start
     Ldi rdc 20   ; a random number for testing
     ; calling the macro to test the function call
-    call TestFunction main  ; this is an example where the first page index (0) is used with its alias of "main"
+    call TestFunction main main  ; this is an example where the first page index (0) is used with its alias of "main"
     PshCon 2     ; to make sure it's correctly jumping to the next line upon return
+    call kill Other main
     Kill
+
+; making sure it is functional across page boundaries
+!page Other
+
+!header kill
+    Ldi rdf 99  ; to make sure it actually correctly went here and then returned
+    ret

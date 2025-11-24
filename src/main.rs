@@ -1,3 +1,4 @@
+use std::io::Write;
 
 fn get_macros(scripts: &mut Vec<Vec<String>>, global_macros: &mut Vec<(String, Vec<String>, Vec<Vec<String>>)>) -> Vec<(String, Vec<String>, Vec<Vec<String>>)> {
     let mut macros = vec![];
@@ -196,7 +197,7 @@ fn generate_headers(script: &Vec<Vec<String>>, page: usize) -> Vec<(String, usiz
 }
 
 fn main() {
-    let script = std::fs::read_to_string("scripts/function_test.mca").unwrap();
+    let script = std::fs::read_to_string("scripts/screen.mca").unwrap();
     let mut script = script
         .lines()
         .map(|line| line.split(" ").collect::<Vec<&str>>())
@@ -247,6 +248,30 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
     let mut ram = [0u8; 256];
     let mut stack = [0u8; 64];
     let mut disc = [0u8; 256];
+    let display = std::sync::Arc::new(std::sync::Mutex::new([0u8; 32*32]));
+    let display_clone = display.clone();
+
+    let (sender, receiver) = std::sync::mpsc::channel::<()>();
+    let thread_handle = std::thread::spawn(move || {
+        let display = display_clone;
+        let mut buf = std::io::BufWriter::new(std::io::stdout());
+        println!("{}", "\n".repeat(50));
+        loop {
+            if receiver.try_recv().is_ok() { break; }
+            let mut text = String::from("\x1B[H");
+            for y in 0..32 {
+                let display_locked = display.lock().unwrap();
+                for x in 0..32 {
+                    let r = ((display_locked[x + y * 32] >> 4) & 0b11) * 85;
+                    let g = ((display_locked[x + y * 32] >> 2) & 0b11) * 85;
+                    let b = ((display_locked[x + y * 32] >> 0) & 0b11) * 85;
+                    text.push_str(&format!("\x1B[48;2;{};{};{}m   \x1B[0m", r, g, b));
+                }
+                text.push('\n');
+            }
+            writeln!(&mut buf, "{}", text).unwrap();
+        }
+    });
 
     // dedicated registers
     let mut program_counter = 0u16;
@@ -265,10 +290,10 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
     let time_start = std::time::Instant::now();
 
     loop {
-        println!("PC: {}, ALU Left: {}, ALU Right: {}, ALU Out: {}, Overflow Flag: {}, Condition Flag: {}", program_counter, alu_left, alu_right, alu_out, overflow_flag, condition_flag);
-        println!("First 10 registers: {:?}", &registers[..10]);
-        println!("First 20 of stack: {:?}", &stack[..20]);
-        std::thread::sleep(std::time::Duration::from_secs_f32(0.1));
+        //println!("PC: {}, ALU Left: {}, ALU Right: {}, ALU Out: {}, Overflow Flag: {}, Condition Flag: {}", program_counter, alu_left, alu_right, alu_out, overflow_flag, condition_flag);
+        //println!("First 10 registers: {:?}", &registers[..10]);
+        //println!("First 20 of stack: {:?}", &stack[..20]);
+        //std::thread::sleep(std::time::Duration::from_secs_f32(0.00025));
 
         cycle += 1;
 
@@ -282,12 +307,12 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
             0b000_00001 => { x_coord_reg = alu_out; },  // "SetDspInX"
             0b000_00010 => { y_coord_reg = alu_out; },  // "SetDspInY"
             0b000_00011 => { color_reg = alu_out; },  // "SetDspInCol"
-            0b000_00100 => {  },  // "Plot"
+            0b000_00100 => { display.lock().unwrap()[immediate as usize + immediate_2 as usize * 32] = color_reg; },  // "Plot"
             0b000_00101 => { break; },  // "Kill"
             0b000_00110 => { pointer_reg = alu_out; },  // "SetPtr"
             0b000_00111 => { alu_left = (program_counter & 0xFF) as u8; },  // "PgcL"
             0b000_01000 => { alu_right = (program_counter & 0xFF) as u8; },  // "PgcR"
-            0b000_01001 => {  },  // "Plt"
+            0b000_01001 => { display.lock().unwrap()[x_coord_reg as usize + y_coord_reg as usize * 32] = color_reg; },  // "Plt"
             0b000_01010 => { next_page_reg = immediate_2; },  // "SetPage"
             0b000_01011 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add); },  // "Goto"
             0b000_01100 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add); },  // "GotoReg"
@@ -349,6 +374,9 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
             program_counter += 1;
         }
     }
+
+    sender.send(()).unwrap();
+    thread_handle.join().unwrap();
 
     println!("PC: {}, ALU Left: {}, ALU Right: {}, ALU Out: {}, Overflow Flag: {}, Condition Flag: {}", program_counter, alu_left, alu_right, alu_out, overflow_flag, condition_flag);
     println!("First 10 registers: {:?}", &registers[..10]);

@@ -1,0 +1,56 @@
+Jmp start
+
+!header start
+    ; looping 32 over x, than 32 over y, and plotting the coord
+    ; repeating 20 times to kinda animate it
+    Ldi rdc 0        ; loop counter for animation
+!loop loop
+    Ldi rdf 0  ; x bound
+    !loop loop_x
+        Ldi rde 0  ; y coord reset for each x
+        !loop loop_y
+            ; getting the color
+            LodL rdf
+            LodR rde
+            Add
+            WrtO rda
+            LodL rda
+            LodR rdc
+            Add
+            SetDspInCol
+
+            ; drawing the pixel (rdf, rde)
+            LodL rdf        ; loading the x coord
+            LodR rde        ; loading the y coord
+            ThruL           ; moving x to alu_out
+            SetDspInX       ; setting the pixel x coord
+            ThruR           ; moving y to alu_out
+            SetDspInY       ; setting the pixel y coord
+            Plt             ; plotting the pixel
+
+            LodL rde        ; loading the y coord
+            LdiR 30         ; the max y bound
+            Grtr            ; checking if y exceeds bound
+            Jiz loop_y_end  ; exit if out of bounds
+            Inc             ; incrementing y coord
+            WrtO rde        ; saving y coord
+            Jmp loop_y      ; repeating for the next y coord
+        !end loop_y_end
+        LodL rdf         ; loading the x coord
+        LdiR 30          ; the max x bound
+        Grtr             ; checking if x exceeds bound
+        Jiz loop_x_end   ; exit if out of bounds
+        Inc              ; incrementing x coord
+        WrtO rdf         ; saving x coord
+        Jmp loop_x       ; repeating for the next x coord
+    !end loop_x_end
+
+    LodL rdc      ; loading the loop counter
+    LdiR 255       ; the bound
+    Grtr          ; bounds check at 20
+    Jiz loop_end  ; exit if done
+    Inc           ; incrementing the loop counter
+    WrtO rdc      ; saving the loop counter
+    Jmp loop      ; iterating again
+!end loop_end
+    Kill

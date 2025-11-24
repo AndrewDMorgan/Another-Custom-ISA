@@ -16,7 +16,7 @@ Pop   ; removing the overflowed value from the stack (mostly just testing pop to
 Goto program_start new_page
 Kill  ; ending the program (technically unreachable code, but whatever)
 
-!page new_page     ; just to test paging
+!page new_page     ; just to test paging (which seems to be working)
 
 !header program_start
     PshCon 5
