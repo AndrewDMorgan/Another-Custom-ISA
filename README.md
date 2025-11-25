@@ -142,3 +142,8 @@ PshCon 1   ; this is just pushing the 0 and 1 onto it, which is pre-loaded into 
     Jnz FibLoop  ; jumping if the condition flag is true, aka if an overflow happened
 Kill  ; ending the program
 ```
+
+## Progress In Minecraft
+
+# 11/24:
+ Developed a 6-bit RGB screen inspired by the design of https://www.youtube.com/watch?v=USH-PME_rls&t=140s. The screen uses 3 rs-latches per pixel for each color channel, storing them as signal strengths. Trapdoors open/close to present different colors, with the number of trapdoors open being tied to the stored color. A 2D selector still needs to be added onto it so that 2 binary numbers can index into an arbitrary pixel.
