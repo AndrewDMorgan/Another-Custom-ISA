@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::io::{Read, Write};
 
 fn get_macros(scripts: &mut Vec<Vec<String>>, global_macros: &mut Vec<(String, Vec<String>, Vec<Vec<String>>)>) -> Vec<(String, Vec<String>, Vec<Vec<String>>)> {
     let mut macros = vec![];
@@ -73,6 +73,11 @@ static OP_CODES: &[(u8, usize, [usize; 3], &str)] = &[
     (0b000_01011, 2, [1, 1, 0], "Goto"),
     (0b000_01100, 2, [0, 1, 0], "GotoReg"),
     (0b000_01101, 1, [0, 0, 0], "SetPageReg"),
+    (0b000_01110, 1, [0, 0, 0], "ReadInFlg"),
+    (0b000_01111, 1, [0, 0, 0], "ReadIn"),
+    (0b000_10000, 0, [0, 0, 0], "ResetInFlg"),
+    (0b000_10001, 0, [0, 0, 0], "SetOutFlg"),
+    (0b000_10010, 0, [0, 0, 0], "SetOut"),
     (0b001_00000, 0, [0, 0, 0], "Add"),
     (0b001_00001, 0, [0, 0, 0], "Sub"),
     (0b001_00010, 0, [0, 0, 0], "Inc"),
@@ -251,8 +256,14 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
     let display = std::sync::Arc::new(std::sync::Mutex::new([0u8; 32*32]));
     let display_clone = display.clone();
 
+    let io_in = std::sync::Arc::new(std::sync::Mutex::new(0u8));
+    let io_in_ref = io_in.clone();
+
+    crossterm::terminal::enable_raw_mode().unwrap();
     let (sender, receiver) = std::sync::mpsc::channel::<()>();
+    let (sender_2, receiver_2) = std::sync::mpsc::channel::<()>();
     let thread_handle = std::thread::spawn(move || {
+        print!("\x1b[?25l");
         let display = display_clone;
         let mut buf = std::io::BufWriter::new(std::io::stdout());
         println!("{}", "\n".repeat(50));
@@ -260,16 +271,37 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
             if receiver.try_recv().is_ok() { break; }
             let mut text = String::from("\x1B[H");
             for y in 0..32 {
-                let display_locked = display.lock().unwrap();
                 for x in 0..32 {
+                    let display_locked = display.lock().unwrap();
                     let r = ((display_locked[x + y * 32] >> 4) & 0b11) * 85;
                     let g = ((display_locked[x + y * 32] >> 2) & 0b11) * 85;
                     let b = ((display_locked[x + y * 32] >> 0) & 0b11) * 85;
-                    text.push_str(&format!("\x1B[48;2;{};{};{}m   \x1B[0m", r, g, b));
+                    text.push_str(&format!("\x1b[{};{}H\x1B[48;2;{};{};{}m   \x1B[0m", y + 1, x * 3 + 1, r, g, b));
                 }
                 text.push('\n');
             }
             writeln!(&mut buf, "{}", text).unwrap();
+        }
+        print!("\x1b[?25h");
+    });
+
+    let (kill_send, kill_recv) = std::sync::mpsc::channel::<()>();
+    let _thread_handle_2 = std::thread::spawn(move || {
+        let mut stdin = std::io::stdin();
+        loop {
+            if receiver_2.try_recv().is_ok() { break; }
+            let mut local_buffer = [0; 12];
+            let result = stdin.read(&mut local_buffer);
+            if let Ok(_n) = result {
+                //println!("Keycode: {:x}, buffer: {:x?}", n, local_buffer);
+                if local_buffer[0] == 0x51 {  // safety release to prevent a runaway.....
+                    // capital Q
+                    crossterm::terminal::disable_raw_mode().unwrap();
+                    kill_send.send(()).unwrap();
+                    return;
+                }
+                *io_in_ref.lock().unwrap() = local_buffer[0] as u8;
+            }
         }
     });
 
@@ -286,7 +318,11 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
     let mut y_coord_reg = 0u8;
     let mut color_reg = 0u8;
 
-    let mut cycle = 0;  // just for debug stuff ig
+    let mut io_in_flag = false;
+    let mut _io_out_flag = false;
+    let mut _io_out = 0u8;
+
+    let mut cycle = 0u128;  // just for debug stuff ig
     let time_start = std::time::Instant::now();
 
     loop {
@@ -294,6 +330,8 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
         //println!("First 10 registers: {:?}", &registers[..10]);
         //println!("First 20 of stack: {:?}", &stack[..20]);
         //std::thread::sleep(std::time::Duration::from_secs_f32(0.00025));
+
+        if kill_recv.try_recv().is_ok() { break; }  // force quite
 
         cycle += 1;
 
@@ -317,6 +355,11 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
             0b000_01011 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add); },  // "Goto"
             0b000_01100 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add); },  // "GotoReg"
             0b000_01101 => { next_page_reg = registers[reg_or_add as usize]; },  // "SetPageReg"
+            0b000_01110 => { registers[reg_or_add as usize] = io_in_flag as u8; },  // "ReadInFlg"
+            0b000_01111 => { registers[reg_or_add as usize] = *io_in.lock().unwrap() },  // "ReadIn"
+            0b000_10000 => { io_in_flag = false; },  // "ResetInFlg"
+            0b000_10001 => { _io_out_flag = alu_out > 0; },  // "SetOutFlg"
+            0b000_10010 => { _io_out = alu_out; },  // "SetOut"
             0b001_00000 => { run_alu(op_code, immediate, &mut alu_left, &mut alu_right, &mut alu_out, &mut overflow_flag, &mut condition_flag); },  // "Add"
             0b001_00001 => { run_alu(op_code, immediate, &mut alu_left, &mut alu_right, &mut alu_out, &mut overflow_flag, &mut condition_flag); },  // "Sub"
             0b001_00010 => { run_alu(op_code, immediate, &mut alu_left, &mut alu_right, &mut alu_out, &mut overflow_flag, &mut condition_flag); },  // "Inc"
@@ -374,16 +417,18 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
             program_counter += 1;
         }
     }
+    let end = time_start.elapsed().as_secs_f64() / cycle as f64;
 
+    let _ = sender_2.send(());  // not going to join the thread since std-in stalls everything until an input is present
     sender.send(()).unwrap();
     thread_handle.join().unwrap();
+    crossterm::terminal::disable_raw_mode().unwrap();
 
     println!("PC: {}, ALU Left: {}, ALU Right: {}, ALU Out: {}, Overflow Flag: {}, Condition Flag: {}", program_counter, alu_left, alu_right, alu_out, overflow_flag, condition_flag);
     println!("First 10 registers: {:?}", &registers[..10]);
     println!("First 20 of stack: {:?}", &stack[..20]);
     std::thread::sleep(std::time::Duration::from_secs_f32(0.1));
 
-    let end = time_start.elapsed().as_secs_f64() / cycle as f64;
     println!("Average Cycle Time: {} seconds, which is about {} operations per second over {} cycles", end, 1.0 / end, cycle);
 }
 
