@@ -6,7 +6,7 @@ The documention is here:
 https://docs.google.com/spreadsheets/d/1EU0HqW1YHJIZ-7ZNyb768a9Qf3rkegkdOBP46fiWrRU/edit?usp=sharing
 
 It includes both the general planned layout, and the individual instructions for the ISA (including the binary encoding for those instructions)
-
+Currenty, the emulator appears to be running a couple hundred million instructions per second, despite being interpreted, not Jit. Unless I messed up the timing, idk. Of coruse, that only maters so much as for a minecraft computer I'll be lucky to get even 0.5 seconds per instruction.
 
 The assembler supports headers (can be invoked under a couple names), pages, macros, and more.
 * Macros are created by doing:
