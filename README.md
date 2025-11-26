@@ -96,6 +96,31 @@ SetPage 1   ; next time a Jmp instruction/branch instruction is used, this page 
 GotoReg page_name/page_index register   ; the register contains the line number to jump to (useful for a function return with a known page, but unknown line number)
 SetPageReg register    ; the register contains the page number (useful for function returns that return to an unknown page)
 ; if SetPageReg is used, it could than be used in combination with JmpR to jump to an arbitrary line and an arbitary page (the SetPage changes the page upon branching, but the branch still changes the line it jumps to within the given page)
+
+; Pages expand into their raw numerical index, with main being index 0. They can be used as a constant number, such as the following:
+
+PshCon main
+Ldi rda my_page
+```
+* Miscellaneous:
+```
+; Registers, similar to headers and pages, expand into a single raw constant representing their index
+; By default, the registers are 'rda' - 'rdp'.
+; 'rda' expands to 0, and as such could be used as following (an example, but can be used in other ways):
+
+PshCon rda
+
+; because teh registers expand into raw numbers, you can also technically avoid writing them out, and instead place the raw index instead (although it makes it harder to read):
+
+Ldi 0 0   ; loading 0 into register 0 (rda)
+
+; Technically, while not advised, you could do some odd things, such as the following, based on how the expansion works:
+
+Ldi main header_name
+; or
+Ldi header_name main
+
+; where header_name/main acts as the register index
 ```
 * Flags are an essential feature of an ISA, as they allow for conditional branching. Below is information on the flags and nuances:
 ```
