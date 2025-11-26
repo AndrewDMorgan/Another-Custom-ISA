@@ -1,12 +1,16 @@
 # Another-Custom-ISA
 Another custom ISA, this time an 8-bit RISC style one targeted for a possible Minecraft computer build.
 
+The computer is 8-bits, but has 16 bit program addressing using a paging system. There's also a custom emmulator and assembler built for it in rust, which supports macros, comments, and much, much more.
+
 The documention is here:
 
 https://docs.google.com/spreadsheets/d/1EU0HqW1YHJIZ-7ZNyb768a9Qf3rkegkdOBP46fiWrRU/edit?usp=sharing
 
 It includes both the general planned layout, and the individual instructions for the ISA (including the binary encoding for those instructions)
-Currenty, the emulator appears to be running a couple hundred million instructions per second, despite being interpreted, not Jit. Unless I messed up the timing, idk. Of coruse, that only maters so much as for a minecraft computer I'll be lucky to get even 0.5 seconds per instruction.
+Currenty, the emulator appears to be running a couple hundred million instructions per second, despite being interpreted, not Jit. Unless I messed up the timing, idk. Of coruse, that only matters so much as for a minecraft computer I'll be lucky to get even 0.5 seconds per instruction.
+
+# Information on the Assembly Language/Assembler
 
 The assembler supports headers (can be invoked under a couple names), pages, macros, and more.
 * Macros are created by doing:
