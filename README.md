@@ -142,6 +142,67 @@ PshCon 1   ; this is just pushing the 0 and 1 onto it, which is pre-loaded into 
     Jnz FibLoop  ; jumping if the condition flag is true, aka if an overflow happened
 Kill  ; ending the program
 ```
+* Current ABI:
+```
+; there isn't really an "offical" ABI, but the one I've been using in my scripts is as follows (simply using these macros will automatically make it work, unless you mess with the stack)
+
+; calls a given function (header/line index and page index/name)
+!macro -export call function_arg page_arg current_page
+    LdiR 5  ; loading 5 to the right alu register, to add to the line number (5 instructions are added after this
+    PgcL    ; the left register contains the current line
+    Add     ; adding the two together
+    PshO    ; pushing the result onto the stack
+    PshCon current_page  ; pushing the current page onto the stack
+    Goto function_arg page_arg   ; this should actually jump to the function
+    ; it should jump to here upon exit (i.e. the next line, which is outside this macro)
+!end
+
+; returns from a function, assuming the return address is on the top of the stack (page than line)
+!macro -export ret
+    TopL      ; load the left alu register with the top of the stack
+    Pop       ; removing the top element (TopL doesn't pop, and pop doesn't return a value, so both are needed)
+    ThruL     ; loading the return page into alu_out to get it into a register
+    WrtO rda  ; writing the output to rda to use for setting the page
+    SetPageReg rda   ; setting the page register to the return page
+    ; repeating, but for the line number
+    TopL      ; load the left alu register with the top of the stack
+    Pop       ; removing the top element (TopL doesn't pop, and pop doesn't return a value, so both are needed)
+    ThruL     ; loading the return address into alu_out to get it into a register
+    WrtO rda  ; writing the output to rda to use for jumping
+    JmpR rda  ; returning/jumping to the callers address
+!end
+
+; Note:
+
+; Because "ret" uses rda, any arguments I try to pass in using rdb and onwards instead (you could also try using the stack, or ram)
+; If using the stack for arguments, be very careful as the order will get messed up because the page and line are pushed afterwards
+;   You will need to pop them but then push them back onto the stack for ret to correctly work (when possible, it's best to just
+;   use registers rdb and beyond for arguments and returns to avoid these complex errors)
+
+; This ABI does work for recursion, with the only complex part being arguments. If the arguments reference the same source, it's easy,
+; just use the same register. However, if they need unique data each iteration, that's where you either need a pointer system (to ram,
+; disc, registers, or whatever), or to use the stack. Ideally, you try to avoid using the stack, or tweak the algerithm, but there may be no alternatives.
+```
+* Formatting:
+```
+; I try to increment in sets of 4 spaces, but use an extra 2 spaces when there's a condition that jumps past a region, instead of a conditional that jumps to, which marks that it's part of the conditional:
+
+!header my_function
+    OvrFlow   ; some condition goes here
+    Jnz header_name
+      ; conditional code goes here, slightly indented
+      Ldi rdb 0
+  !header header_name     ; this is slightly indented backwards to mark it's not a seperate scope, but rather a branch within the scope
+    ; continuation of normal code
+    Ldi rda 0
+
+; CamelCase, snake_case, or other naming convensions are all fine
+
+; When a macro takes in a header name, I try to pass a very explict name to it to prevent namespace collisions:
+my_macro MyMacro_HeaderName_Task_0
+; I try to include the task it's doing, possibly the macro's name, and a post fix number, which is incremented each spot it's used to prevent collisions
+my_macro MyMacro_HeaderName_Task_1    ; used again, but no collisions. And, with the very explicit and complex name, it's highly unlikely you'll simply redefine it elsewhere by accident
+```
 
 ## Progress In Minecraft
 
