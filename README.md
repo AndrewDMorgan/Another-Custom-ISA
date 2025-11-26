@@ -11,7 +11,7 @@ Currenty, the emulator appears to be running a couple hundred million instructio
 The assembler supports headers (can be invoked under a couple names), pages, macros, and more.
 * Macros are created by doing:
 ```
-!macro macro_name arg1 arg2 arg3    ...(further args listed)   note that comments can't go on this line or it'll use them as args
+!macro macro_name arg1 arg2 arg3    ...(further args listed)   note that comments can't go on this line or it'll use them as args (so this is an invalid comment/macro)
     ; code can go here
     ; simply use the arg name and it'll be replaced when the macro is expanded:
     Ldi arg1    ; no special tokens, like a $, #, or {...} are necessary here
@@ -20,13 +20,15 @@ The assembler supports headers (can be invoked under a couple names), pages, mac
 ; you could probably use valid operations as the name for args, or use an arg for the instruction, and it'd probably work
 ; this does seem to work, but wasn't entirely intentional, but should work, but if it doesn't it's not my fault
 !macro other_macro_name rda arg2 Ldi
-    Ldi rda arg2   ; this assumes Ldi is a valid instruction and is being provided valid inputs
+    ; this assumes Ldi is a valid instruction and is being provided valid inputs
+    ; if that contract is broken, it'll either crash (failing to parse a non-integer into an integer) or ignore it as a comment (more on comments below)
+    Ldi rda arg2
 !end
 
 ; or something like
 
 !macro other_other_macro_name instruction_name_arg instruction_arg1 instruction_arg2
-    ; note that whitespace is purely syntax sugar and doesn't matter, it really is only for readability here (and is recommended for that reason)
+    ; note that whitespace-based indentation is purely syntax sugar and doesn't matter, it really is only for readability here (and is recommended for that reason)
     instruction_name_arg instruction_arg1 instruction_arg_2
 !end
 
@@ -49,9 +51,17 @@ The assembler supports headers (can be invoked under a couple names), pages, mac
 ; with one exception though (as always):
 ; (unrelated) technically speaking, since the parser only divides tokens by space, you can include symbols and other things in the names
 !macro new_mac! header_arg_name
-    !header header_arg_name    ; this should in theory work as long as each time it's used it's given a unique header name; similar to before, the parser replaces the argument before doing any further parsing
+    !header header_arg_name    ; this works as long as each time it's used it's given a unique header name; similar to before, the parser replaces the argument before doing any further parsing
     ; you could also use !loop, or other alias's for !header, but you cannot use !page, as the pages are created before macro expansion, and as such will both cut the macro in-half, and incorrectly parse everything
 !end
+
+; Note:
+
+; Global macros are added in order as they're seen
+; As such, if you call a global macro which is defined in a later page, you cannot access it
+; However, if a macro is defined after a given line, but on the same page, that is valid
+; The parser goes page by page, and for a given page first locates and slices any macros, than expands any mentions of it
+; This means a macro can be defined anywhere on a page, but can only be used in pages at or beyond the current page
 ```
 * Headers can be defined by doing any of the following (the different names all operate the same, and are really just syntax sugar for the same thing):
 ```
