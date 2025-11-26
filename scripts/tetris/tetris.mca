@@ -1,0 +1,308 @@
+
+============================ Global Macros ============================
+
+; adds an 8 bit number to a 16 bit number, storing the result in a 16 bit destination
+!macro -export add_16_bit_lazy lo_src hi_src lo_src_2 dest_lo dest_hi macro_header_name
+    LodL lo_src     ; loading the low byte
+    LodR lo_src_2   ; loading the low byte of the other number
+    Add             ; adding them together
+    WrtO dest_lo    ; writing the low byte result
+    OvrFlow         ; checking for overflow
+    LodL hi_src     ; loading the high byte (left register is used for both branches to synchronize)
+    Jiz macro_header_name   ; if no overflow, skip the increment
+      Inc             ; incrementing the high byte if there was an overflow
+      WrtO dest_hi    ; writing the high byte result (temp)
+      LodL dest_hi    ; loading the high byte result to left (standardized for both branches)
+  !header macro_header_name
+    ThruL           ; moving the high byte result to alu out
+    WrtO dest_hi    ; writing the result (reindent for branching, but not for non-branching
+!end
+
+!macro -export clear_dsp mac_header_name_x mac_header_name_y color
+    LdiL color    ; writing the color into the alu
+    ThruL         ; moving the color to alu out
+    SetDspInCol   ; setting the display color to the color (resetting it)
+    Ldi rdb 0     ; y
+    !loop mac_header_name_y
+        Ldi rda 0  ; x
+        !loop mac_header_name_x
+            LodL rda   ; x
+            LodR rdb   ; y
+            ThruL      ; moving x to alu out
+            SetDspInX  ; setting the x coord
+            ThruR      ; moving y to alu out
+            SetDspInY  ; setting the y coord
+            Plt        ; plotting the pixel (color was set before)
+            ;LodL rda  ; loading x (already done above)
+            Inc        ; incrementing x
+            WrtO rda   ; saving the result
+
+            LdiR 31    ; 32 wide, but using the pre-inc number so 31 instead (saving a load instruction)
+            Less       ; checking bounds
+            Jiz mac_header_name_x  ; repeat if within bounds
+        LodL rdb  ; loading y
+        Inc       ; incrementing y
+        WrtO rdb  ; saving the result
+        LdiR 31   ; 32 tall, but using the pre-inc num
+        Less      ; checking bounds
+        Jiz mac_header_name_y  ; repeat if within bounds
+!end
+
+; sets a block of memory to a single constant value
+!macro -export alloc_block_ram start_const size_const header_name const
+    ; calculating the end
+    LdiL start_const  ; loading the start address
+    LdiR size_const   ; loading the size
+    Add               ; adding them together
+    WrtO rdb          ; writing the end address to rdb
+    Ldi rda start_const  ; loading the start address to rda (tracks the current address)
+    !loop header_name
+        ; left reg always has the up-to-date address
+        ThruL       ; loading the current address to alu_out
+        SetPtr      ; setting the ptr to alu_out (i.e. using rda as a pointer)
+        LdiR const  ; loading the constant to the right alu register
+        ThruR       ; moving that constant to alu out
+        RPtrO       ; writing the constant at the pointed location in ram
+        ; incrementing
+        ; LodL rda    left reg already has the current address
+        Inc        ; incrementing the address
+        WrtO rda   ; writing the updated address back to rda
+        ; checking bounds
+        LodL rda  ; loading the current address
+        LodR rdb  ; loading the end address
+        Less      ; checking if current < end
+        Jiz header_name   ; if so, repeat
+!end
+
+; calls a given function (header/line index and page index/name)
+; the ABI for this macro aligns with that of the ret macro also provided here
+!macro -export call function_arg page_arg current_page
+    LdiR 5  ; loading 5 to the right alu register, to add to the line number (5 instructions are added after this
+    PgcL    ; the left register contains the current line
+    Add     ; adding the two together
+    PshO    ; pushing the result onto the stack
+    PshCon current_page  ; pushing the current page onto the stack
+    Goto function_arg page_arg   ; this should actually jump to the function
+    ; it should jump to here upon exit (i.e. the next line, which is outside this macro)
+!end
+
+; returns from a function, assuming the return address is on the top of the stack (page than line)
+; the ABI this expects lines up with that of the call macro also provided here
+!macro -export ret
+    TopL      ; load the left alu register with the top of the stack
+    Pop       ; removing the top element (TopL doesn't pop, and pop doesn't return a value, so both are needed)
+    ThruL     ; loading the return page into alu_out to get it into a register
+    WrtO rda  ; writing the output to rda to use for setting the page
+    SetPageReg rda   ; setting the page register to the return page
+    ; repeating, but for the line number
+    TopL      ; load the left alu register with the top of the stack
+    Pop       ; removing the top element (TopL doesn't pop, and pop doesn't return a value, so both are needed)
+    ThruL     ; loading the return address into alu_out to get it into a register
+    WrtO rda  ; writing the output to rda to use for jumping
+    JmpR rda  ; returning/jumping to the callers address
+!end
+
+; expands to plot a given set of registers for a given color
+; depending on the context, it may just be more efficient to manually write it out
+!macro -export Color x_pos y_pos color_value
+    LodL x_pos   ; loading the x position
+    ThruL        ; moving to alu out
+    SetDspInX    ; setting the display x
+    LodL y_pos   ; loading the y position
+    ThruL        ; moving to alu out
+    SetDspInY    ; setting the display y
+    LodL color_value  ; loading the color value
+    ThruL        ; moving to alu out
+    SetDspInCol  ; setting the display color
+    Plt          ; plotting the pixel
+!end
+
+
+============================ Program Start ============================
+
+
+Jmp Start
+
+!header Start
+    ; allocations:
+    ;   ram addresses 55 - 255 are reserved for the tetris grid
+      ; stored as 0 -> null/no piece, 1-7 are the piece types
+      ; the ram in minecraft is non-volatile, so it needs to be cleared
+      ; this ensures all cells begin as blank
+    alloc_block_ram 55 200 TetrisGridReset_0 0  ; initializing the tetris grid to all 0s (blank cells)
+
+    ; clearing the display
+    clear_dsp ClearDspX_0 ClearDspY_0 0
+    ; ~40 instructions in (255 per page before paging is needed)
+
+    ; ram @ 0 is the current piece x position
+    ; ram @ 1 is the current piece y position
+    ; ram @ 2 is the current piece type
+    ; ram @ 3 is the current piece rotation
+
+    ; ram @ 4 is the next piece type
+
+      ; making a 16 bit number since the score goes higher (addition is really easy with multiple bits)
+    ; ram @ 5 is the score (lo byte)
+    ; ram @ 6 is the score (hi byte)
+
+    ; initializing these members to 0
+    alloc_block_ram 0 7 StartMembersReset_0 0
+
+    ; starting the main game loop
+    call StartGame game_main main
+    ; ~60 ish instructions
+!end StartEnd
+    Kill
+
+
+; the main game loop/handling
+============================ Game Main ============================
+!page game_main
+
+
+; this is a function (using the standardized call/ret macros and stack convention)
+!header StartGame
+    !loop main_game_loop
+        ; clearing the display each frame
+        ; not needed as the board clears itself
+        ; blank cells return 0 as the color, rendering black (they aren't simply skipped)
+        ;clear_dsp ClearDspX_1 ClearDspY_1 0
+
+        ; handling events & stuff
+        call HandleEvents event_handling_main game_main
+
+        ; if there's no active block/piece, spawn one
+        RLodL 2    ; loading the current piece type
+        ThruL      ; empty pieces are marked as zero/null
+        Zero       ; checks if alu out is zero (checking if the piece type is 0)
+        Jnz active_piece  ; jumping if there is a piece
+          ; no piece active, spawning one
+          ; expects rdb to contain a boolean (1 for unable to spawn/game over, 0 for successful spawn)
+          call SpawnPiece spawn_piece game_main
+          LodL rdb   ; loading the result of the spawn attempt
+          ThruL      ; moving it to alu out
+          Zero       ; checking if it is zero (successful spawn)
+          Jiz active_piece   ; jumping right after the ret (to the piece handling code) if successful spawn
+          ; unable to spawn piece, game over
+            ret        ; exiting the function (game over)
+          ; ~63 instructions so far
+      !header active_piece
+        call RenderBoard rendering_main game_main
+        call RenderPiece rendering_main game_main
+
+        ; todo! move piece down (based on timer or something)
+        ; todo! check for line clears on piece placement
+
+        ; looping back again
+        Jmp main_game_loop
+    ret  ; leaving the function (never really used, but whatever; for now the binary is still small enough)
+
+
+; rendering stuff
+============================ Rendering Main ============================
+!page rendering_main
+
+; rdb is the input of piece type, and rdb is the output of piece color
+!header MatchPieceColor
+    ; making a jump table to match piece types to colors
+    LodL rdb    ; loading the piece type
+    ShftL       ; doubling it's value (2 instructions per case)
+    WrtO rda    ; saving the intermediate value
+    LodR rda    ; moving it back into the alu
+    LdiL 4      ; adding 4 to skip to the jump table
+    Add         ; adding that offset
+    WrtO rda    ; saving the result
+    LodR rda    ; loading it back into the alu
+    PgcL        ; loading the current line into the left alu register
+    Add         ; getting the final offset
+    WrtO rda    ; saving the intermediate
+    JmpR rda    ; jumping
+        ; colors:
+      Ldi rdb 0     ; loading the color
+      Jmp TableEnd  ; leaving the table
+      Ldi rdb 10    ; loading the color
+      Jmp TableEnd  ; leaving the table
+      Ldi rdb 20    ; loading the color
+      Jmp TableEnd  ; leaving the table
+      Ldi rdb 30    ; loading the color
+      Jmp TableEnd  ; leaving the table
+      Ldi rdb 40    ; loading the color
+      Jmp TableEnd  ; leaving the table
+      Ldi rdb 50    ; loading the color
+      Jmp TableEnd  ; leaving the table
+      Ldi rdb 60    ; loading the color
+      Jmp TableEnd  ; leaving the table
+      Ldi rdb 70    ; loading the color
+      Jmp TableEnd  ; leaving the table
+  !header TableEnd
+    ret  ; leaving the function (this has to be separate from Jmp, as ret expands to many instructions)
+
+!header RenderBoard
+    ; looping over the x and y of the grid (mapped 1x1 to pixels)
+    Ldi rdc 0    ; x_pos
+    Ldi rdd 0    ; y_pos
+    Ldi rde 55   ; position
+    !loop BoardRenderLoop
+        LodL rde  ; loading the position
+        ThruL     ; moving to alu out
+        SetPtr    ; setting the pointer
+        RPtrL     ; reading the piece type at that position
+        ThruL     ; moving to alu out
+        WrtO rdb  ; saving the piece type to rdb
+        call MatchPieceColor rendering_main rendering_main  ; getting the color for the piece type in rdb
+        LodL rdc  ; loading x_pos
+        LdiR 2    ; adding padding against the edge
+        Add       ; adding padding
+        WrtO rdf  ; saving the adjusted x_pos to rdg
+        LodL rdd  ; loading y_pos
+        LdiR 9    ; adding padding against the top
+        Add       ; adding padding
+        WrtO rdg  ; saving the adjusted y_pos to rdg
+        Color rdf rdg rdb  ; plotting the pixel at (x_pos, y_pos) with the color in rdb
+        LodL rdc  ; loading x
+        Inc       ; incrementing x
+        WrtO rdc  ; saving x
+        LdiR 9   ; width is 10, but using pre-inc number so 9
+        Less      ; checking bounds
+        Jiz ValidXCoord   ; if valid, continue
+          Ldi rdc 0  ; resetting x
+          LodL rdd   ; loading y
+          Inc        ; incrementing y
+          WrtO rdd   ; saving y
+      !header ValidXCoord
+        LodL rde   ; loading the position (address)
+        Inc        ; incrementing position
+        WrtO rde   ; saving position
+        LdiR 254   ; final address is 255, but pre-inc number so 254
+        Less       ; checking bounds
+        Jiz BoardRenderLoop  ; repeating if within bounds
+    ret  ; leaving the function
+
+!header RenderPiece
+    ; todo!
+    ret  ; leaving the function
+
+
+; spawning pieces
+============================ Main Event Handling ============================
+!page event_handling_main
+
+; this is a function (using the standardized call/ret macros and stack convention)
+!header HandleEvents
+    ; todo!
+    ; do things like checking for rotation/drops and stuff
+
+    ret  ; leaving the function
+
+
+; event handling stuff
+============================ Spawn Piece ============================
+!page spawn_piece
+
+; this is a function (using the standardized call/ret macros and stack convention)
+!header SpawnPiece
+    ; todo!
+    Ldi rdb 1    ; todo! actually check spawning conditions; for now just ending the program
+    ret  ; leaving the function
+

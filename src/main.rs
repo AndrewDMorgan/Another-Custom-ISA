@@ -202,7 +202,7 @@ fn generate_headers(script: &Vec<Vec<String>>, page: usize) -> Vec<(String, usiz
 }
 
 fn main() {
-    let script = std::fs::read_to_string("scripts/screen.mca").unwrap();
+    let script = std::fs::read_to_string("scripts/tetris/tetris.mca").unwrap();
     let mut script = script
         .lines()
         .map(|line| line.split(" ").collect::<Vec<&str>>())
@@ -233,6 +233,7 @@ fn main() {
         headers.append(&mut generate_headers(&mut script.0, page));
     }
 
+    let mut total_loc = 0;
     let mut program_bytes = vec![];
     for script_index in 0..pages.len() {
         let bytes = compile_script(&mut pages, &headers, script_index);
@@ -240,8 +241,10 @@ fn main() {
             .map(|(index, byte)| format!("{:>3}: {}\n\n", index, format!("{:032b}", byte)
                 .chars().map(|c| format!(" {} ", c)).collect::<String>()
             )).collect::<String>());
+        total_loc += bytes.len();
         program_bytes.push(bytes);
     }
+    println!("Total Program Size: {} lines of code", total_loc);
 
     // running the emulator
     run_emulator(program_bytes);
@@ -250,7 +253,7 @@ fn main() {
 fn run_emulator(program_bytes: Vec<Vec<u32>>) {
     // memory
     let mut registers = [0u8; 256];
-    let mut ram = [0u8; 256];
+    let mut ram = [1u8; 256];
     let mut stack = [0u8; 64];
     let mut disc = [0u8; 256];
     let display = std::sync::Arc::new(std::sync::Mutex::new([0u8; 32*32]));
@@ -326,7 +329,7 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
     let time_start = std::time::Instant::now();
 
     loop {
-        //println!("PC: {}, ALU Left: {}, ALU Right: {}, ALU Out: {}, Overflow Flag: {}, Condition Flag: {}", program_counter, alu_left, alu_right, alu_out, overflow_flag, condition_flag);
+        //println!("PC: {}, Page: {}, ALU Left: {}, ALU Right: {}, ALU Out: {}, Overflow Flag: {}, Condition Flag: {}", program_counter & 0xFF, ((program_counter & 0xFF00) >> 8), alu_left, alu_right, alu_out, overflow_flag, condition_flag);
         //println!("First 10 registers: {:?}", &registers[..10]);
         //println!("First 20 of stack: {:?}", &stack[..20]);
         //std::thread::sleep(std::time::Duration::from_secs_f32(0.00025));
@@ -352,8 +355,8 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
             0b000_01000 => { alu_right = (program_counter & 0xFF) as u8; },  // "PgcR"
             0b000_01001 => { display.lock().unwrap()[x_coord_reg as usize + y_coord_reg as usize * 32] = color_reg; },  // "Plt"
             0b000_01010 => { next_page_reg = immediate_2; },  // "SetPage"
-            0b000_01011 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add); },  // "Goto"
-            0b000_01100 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add); },  // "GotoReg"
+            0b000_01011 => { run_lu(op_code, condition_flag, &mut next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add); },  // "Goto"
+            0b000_01100 => { run_lu(op_code, condition_flag, &mut next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add); },  // "GotoReg"
             0b000_01101 => { next_page_reg = registers[reg_or_add as usize]; },  // "SetPageReg"
             0b000_01110 => { registers[reg_or_add as usize] = io_in_flag as u8; },  // "ReadInFlg"
             0b000_01111 => { registers[reg_or_add as usize] = *io_in.lock().unwrap() },  // "ReadIn"
@@ -400,12 +403,12 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
             0b101_00100 => { alu_right = disc[pointer_reg as usize]; },  // "DPtrR"
             0b101_00101 => { disc[pointer_reg as usize] = alu_out; },  // "DPtrO"
             0b101_00110 => { disc[reg_or_add as usize] = immediate; },  // "DLdi"
-            0b110_00000 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "Jmp"
-            0b110_00001 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "Jiz"
-            0b110_00010 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "Jnz"
-            0b110_00011 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "JmpR"
-            0b110_00100 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "JizR"
-            0b110_00101 => { run_lu(op_code, condition_flag, next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "JnzR"
+            0b110_00000 => { run_lu(op_code, condition_flag, &mut next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "Jmp"
+            0b110_00001 => { run_lu(op_code, condition_flag, &mut next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "Jiz"
+            0b110_00010 => { run_lu(op_code, condition_flag, &mut next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "Jnz"
+            0b110_00011 => { run_lu(op_code, condition_flag, &mut next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "JmpR"
+            0b110_00100 => { run_lu(op_code, condition_flag, &mut next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "JizR"
+            0b110_00101 => { run_lu(op_code, condition_flag, &mut next_page_reg, &mut program_counter, &registers, &mut jumped, immediate, immediate_2, reg_or_add) },  // "JnzR"
             0b111_00000 => { for i in 0..stack.len() - 1 { stack[i] = stack[i + 1] } stack[stack.len() - 1] = 0; },  // "Pop"
             0b111_00001 => { alu_left = stack[0]; },  // "TopL"
             0b111_00010 => { alu_right = stack[0]; },  // "TopR"
@@ -425,6 +428,7 @@ fn run_emulator(program_bytes: Vec<Vec<u32>>) {
     crossterm::terminal::disable_raw_mode().unwrap();
 
     println!("PC: {}, ALU Left: {}, ALU Right: {}, ALU Out: {}, Overflow Flag: {}, Condition Flag: {}", program_counter, alu_left, alu_right, alu_out, overflow_flag, condition_flag);
+    println!("Ram: {:?}", &ram);
     println!("First 10 registers: {:?}", &registers[..10]);
     println!("First 20 of stack: {:?}", &stack[..20]);
     std::thread::sleep(std::time::Duration::from_secs_f32(0.1));
@@ -466,16 +470,23 @@ fn run_alu(op_code: u8, immediate: u8, left: &mut u8, right: &mut u8, out: &mut 
     }
 }
 
-fn run_lu(op_code: u8, condition_flag: bool, next_page_reg: u8, program_counter_reg: &mut u16, registers: &[u8; 256], jumped: &mut bool, immediate: u8, immediate_2: u8, reg_or_add: u8) {
+fn run_lu(op_code: u8, condition_flag: bool, next_page_reg: &mut u8, program_counter_reg: &mut u16, registers: &[u8; 256], jumped: &mut bool, immediate: u8, immediate_2: u8, reg_or_add: u8) {
     match op_code {
-        0b000_01011 => { *jumped = true; *program_counter_reg = immediate as u16 | ((immediate_2 as u16) << 8); },  // "Goto"
-        0b000_01100 => { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((next_page_reg as u16) << 8); },  // "GotoReg"
-        0b110_00000 => { *jumped = true; *program_counter_reg = reg_or_add as u16 | ((next_page_reg as u16) << 8); },  // "Jmp"
-        0b110_00001 => { if condition_flag { *jumped = true; *program_counter_reg = reg_or_add as u16 | ((next_page_reg as u16) << 8); } },  // "Jiz"
-        0b110_00010 => { if !condition_flag { *jumped = true; *program_counter_reg = reg_or_add as u16 | ((next_page_reg as u16) << 8); } },  // "Jnz"
-        0b110_00011 => { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((next_page_reg as u16) << 8); },  // "JmpR"
-        0b110_00100 => { if condition_flag { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((next_page_reg as u16) << 8); } },  // "JizR"
-        0b110_00101 => { if !condition_flag { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((next_page_reg as u16) << 8); } },  // "JnzR"
+        0b000_01011 => {
+            *next_page_reg = immediate_2;
+            *jumped = true;
+            *program_counter_reg = immediate as u16 | ((immediate_2 as u16) << 8);
+        },  // "Goto"
+        0b000_01100 => {
+            *jumped = true;
+            *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((*next_page_reg as u16) << 8);
+        },  // "GotoReg"
+        0b110_00000 => { *jumped = true; *program_counter_reg = reg_or_add as u16 | ((*next_page_reg as u16) << 8); },  // "Jmp"
+        0b110_00001 => { if condition_flag { *jumped = true; *program_counter_reg = reg_or_add as u16 | ((*next_page_reg as u16) << 8); } },  // "Jiz"
+        0b110_00010 => { if !condition_flag { *jumped = true; *program_counter_reg = reg_or_add as u16 | ((*next_page_reg as u16) << 8); } },  // "Jnz"
+        0b110_00011 => { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((*next_page_reg as u16) << 8); },  // "JmpR"
+        0b110_00100 => { if condition_flag { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((*next_page_reg as u16) << 8); } },  // "JizR"
+        0b110_00101 => { if !condition_flag { *jumped = true; *program_counter_reg = (registers[reg_or_add as usize]) as u16 | ((*next_page_reg as u16) << 8); } },  // "JnzR"
         _ => {}
     }
 }
