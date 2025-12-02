@@ -252,4 +252,6 @@ my_macro MyMacro_HeaderName_Task_1    ; used again, but no collisions. And, with
 
 ### Substantial Progress In Logisim-Evolution (12/2):
 
+Note: There are some slight differences with the behavior between the planned MC version, and this circuit. However, these should only be in edge cases, and the overall function should be the same. Any inconsistencies arise mostly from the differences between redstone and actual circuitry.
+
 ![Screenshot Of Circuit (WIP)](https://github.com/AndrewDMorgan/Another-Custom-ISA/blob/main/circuit.png)
