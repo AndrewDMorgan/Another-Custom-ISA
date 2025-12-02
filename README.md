@@ -252,5 +252,4 @@ my_macro MyMacro_HeaderName_Task_1    ; used again, but no collisions. And, with
 
 ### Substantial Progress In Logisim-Evolution (12/2):
 
-![Screenshot Of Circuit (WIP)]
-(https://github.com/AndrewDMorgan/Another-Custom-ISA/blob/main/circuit.png)
+![Screenshot Of Circuit (WIP)](https://github.com/AndrewDMorgan/Another-Custom-ISA/blob/main/circuit.png)
