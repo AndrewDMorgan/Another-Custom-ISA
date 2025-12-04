@@ -256,3 +256,8 @@ Note: There are some slight differences with the behavior between the planned MC
 
 ![Screenshot Of Circuit (WIP)](https://github.com/AndrewDMorgan/Another-Custom-ISA/blob/main/circuit.png)
 
+### It's Alive! (12/3):
+
+The CPU can now correctly run the screen program. Paging, multi-page jumps, stack behavior, and some other instructions/operations haven't yet been tested and likely still contain bugs.
+
+![Screenshot Of Circuit (It's Alive!)](https://github.com/AndrewDMorgan/Another-Custom-ISA/blob/main/circuit_working.png)
