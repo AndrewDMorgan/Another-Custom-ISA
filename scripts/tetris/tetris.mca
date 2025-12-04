@@ -167,6 +167,7 @@ Jmp Start
         ; clearing the display each frame
         ; not needed as the board clears itself
         ; blank cells return 0 as the color, rendering black (they aren't simply skipped)
+        ; this also clears actively moving pieces
         ;clear_dsp ClearDspX_1 ClearDspY_1 0
 
         ; handling events & stuff

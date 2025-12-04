@@ -35,7 +35,7 @@ Jmp start
             Inc             ; incrementing y coord
             WrtO rde        ; saving y coord
             Jmp loop_y      ; repeating for the next y coord
-        !end loop_y_end
+      !end loop_y_end
         LodL rdf         ; loading the x coord
         LdiR 30          ; the max x bound
         Grtr             ; checking if x exceeds bound
