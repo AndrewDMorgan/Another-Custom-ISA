@@ -1,0 +1,305 @@
+; !page main (index 0)
+
+; a +/- b
+; wow.... this became complex fast...
+; assumes a bit precision of 4 shifts (16x)
+!macro signed_add reg_a_whole reg_a_part reg_b_part sign_reg header_positive header_overflow header
+    LodL sign_reg  ; loading the sign
+    ThruL          ; moving it to the output
+    Zero           ; checking if it's zero
+    ; pre loading to save instructions
+    LodL reg_a_part   ; loading the fractional part of a
+    LodR reg_b_part   ; loading the fractional part of b
+    Jiz header_positive  ; if it's zero, it's positive addition, otherwise it's subtraction/negative
+            ; negative checking for overflow
+      Less              ; checking if a_part < b_part (a_part - b_part < 0)
+      Jiz header_overflow      ; if true, it will overflow
+        Sub             ; finalizing the valid fractional subtraction
+        WrtO reg_a_part ; saving the result
+        Jmp header      ; jumping to the end
+      !header header_overflow
+        ; underflow, need to borrow 1 from whole part and find the fractional remainder
+            ; getting the remainder
+        LodL reg_b_part
+        LodR reg_a_part
+        Sub               ; b_part - a_part (difference)
+        WrtO reg_a_part   ; saving the new fractional part
+        LodR reg_a_part   ; reloading the new fractional part to finish the equation (16 - difference)
+        LdiL 16           ; loading 16 (1.0)
+        Sub               ; 16 - difference
+        WrtO reg_a_part   ; saving the new fractional part
+            ; decrementing whole part
+        LodL reg_a_whole  ; loading whole part
+        Dec               ; decrementing it
+        WrtO reg_a_whole  ; saving it
+        Jmp header      ; jumping to the end
+  !header header_positive
+        ; positive
+      Add              ; adding the fractional parts
+      WrtO reg_a_part  ; saving the result
+      LodL reg_a_part  ; reloading the fractional part to check for overflow
+      LdiR 15          ; part_a > 15 means it's >= 1.0
+      Grtr             ; checking for the condition/overflow
+      Jnz header       ; if true, overflow, otherwise done
+        ; subtracting 16 from part
+        ; incrementing whole part by 1
+        ; alu left already has part in it
+        LdiR 16    ; loading 16 (1.0)
+        Sub        ; subtracting 16 from part
+        WrtO reg_a_part   ; saving the new part
+        LodL reg_a_whole  ; loading whole part
+        Inc               ; incrementing it
+        WrtO reg_a_whole  ; saving it
+  !header header
+    ; the end!
+!end
+
+; 4 x 3 ratio of width to height for original pong
+; lets try 64 x 48
+; Controls: w (up), s (down): I/O for 119, 115
+; single player only, you control both paddles
+
+!header Start
+    ; clearing the bottom of the screen as it's out of bounds
+    LdiL 42     ; gray
+    ThruL       ; moving to output
+    SetDspInCol ; setting the color
+    Ldi rda 0   ; x pos (0)
+    LdiL 48     ; y pos (48)
+    ThruL       ; moving to output
+    SetDspInY   ; setting the y pos
+    LdiR 62     ; max x pos (63)
+    !loop clear_loop
+        LodL rda     ; loading x pos
+        ThruL        ; moving to output
+        SetDspInX    ; setting the x pos
+        Plt          ; plotting the pixel
+        Inc       ; incrementing x pos
+        WrtO rda  ; saving x pos
+        Grtr      ; checking if x pos > max
+        Jnz clear_loop  ; if not, continue
+
+    ; the x, y position of the ball
+    ; absolute pixel pos
+    Ldi rda 32  ; x pos (32)
+    Ldi rdb 45  ; y pos (24)
+    Ldi rdg 0   ; sub pixel x pos (shifted 4x)
+    Ldi rdh 0   ; sub pixel y pos (shifted 4x)
+    ; the x, y velocity of the ball
+    ; the velocities are between -1 and 1, but the sign is another register
+    ; the velocity is shifted 4 times left, aka 16x subpixel precision
+    Ldi rdc 8   ; x vel (0.5)
+    Ldi rdd 6   ; y vel (0.25)
+    Ldi rdi 1   ; positive sign (sign for x vel)
+    Ldi rdj 0   ; positive sign (sign for y vel)
+    ; the current score
+    Ldi rde 0   ; player score
+    ; the current paddle position in absolute pixel coords
+    Ldi rdf 24  ; paddle y (both sides ig)
+
+    ; rendering the paddle
+    ;Ldi acc 24
+    LdiL 24
+  !loop paddle_render_loop
+        LdiR 63      ; x pos (right paddle)
+        ThruR        ; moving to output
+        SetDspInX    ; setting the x pos
+        SetDspInCol  ; saving as the color
+        ThruL        ; moving to output (left contains 24/the current y)
+        SetDspInY    ; setting the y pos
+        Plt          ; plotting the pixel
+        LdiR 0       ; x pos (left paddle)
+        ThruR        ; moving to output
+        SetDspInX    ; setting the x pos
+        Plt          ; plotting the pixel
+        Inc          ; incrementing y pos
+        WrtO acc     ; saving y pos (temp)
+        LodL acc     ; loading y pos to it's home (alu left)
+        LdiR 27      ; checking if we reached paddle height (4 pixels in size)
+        Grtr         ; checking if y pos > 27
+        Jnz paddle_render_loop  ; if not, continue
+
+    !loop main_loop
+        ; saving the original paddle position and ball position
+        LodL rda   ; original x pos
+        LodR rdb   ; original y pos
+        ThruL      ; moving to output
+        WrtO rdk   ; x pos saved
+        ThruR      ; moving to output
+        WrtO rdl   ; y pos saved
+        LodL rdf   ; original paddle pos
+        ThruL      ; moving to output
+        WrtO rdm   ; paddle pos saved
+
+      ; waiting for an input just to slow it down (temp todo! remove)
+        ; Controls: w (up), s (down): I/O for 119, 115
+        !loop wait_for_input
+            ReadInFlg acc       ; reading input flag
+            LodL acc            ; loading it
+            ThruL               ; moving to output to compare
+            Zero                ; checking equality against zero
+            Jiz wait_for_input  ; if zero, loop
+            ReadIn acc      ; reading the input
+            LodL acc        ; loading it
+            LdiR 119        ; 'w' key
+            Eq              ; checking equality
+            Jnz move_down   ; if not equal, check for downward motion
+            LodL rdf        ; loading current paddle pos
+            Dec             ; moving up (decrementing)
+            WrtO rdf        ; saving new paddle pos
+            Jmp no_move     ; jumping to no move
+          !header move_down
+              LdiR 115      ; 's' key
+              Eq            ; checking equality
+              Jnz  no_move  ; if not equal, no movement
+              LodL rdf      ; loading current paddle pos
+              Inc           ; moving down (incrementing)
+              WrtO rdf      ; saving new paddle pos
+          !header no_move
+            ResetInFlg  ; resetting input flag
+
+        ; adding the velocity to the ball's position
+        ; signed_add reg_a_whole reg_a_part reg_b_part sign_reg header_positive header_overflow header
+        signed_add rda rdg rdc rdi header_positive_x_signed_add_main_loop header_overflow_x_signed_add_main_loop header_x_signed_add_main_loop
+        signed_add rdb rdh rdd rdj header_positive_y_signed_add_main_loop header_overflow_y_signed_add_main_loop header_y_signed_add_main_loop
+
+        ; rendering the new ball position
+        LdiL 0      ; (black)
+        ThruL       ; moving to output
+        SetDspInCol ; setting the color
+        LodL rdk    ; loading the original x pos
+        ThruL       ; moving to output
+        SetDspInX   ; setting the x pos
+        LodL rdl    ; loading the original y pos
+        ThruL       ; moving to output
+        SetDspInY   ; setting the y pos
+        Plt         ; clearing the original ball
+        LdiL 63      ; (white)
+        ThruL        ; moving to output
+        SetDspInCol  ; saving as the color
+        LodL rda     ; loading the x position
+        ThruL        ; moving to output
+        SetDspInX    ; saving as the x pos
+        LodR rdb     ; loading the y position
+        ThruR        ; moving to output
+        SetDspInY    ; saving as the y pos
+        Plt          ; plotting the ball
+
+        ; checking collision with the ceiling and floor
+        Zero   ; output still has rdb, lol
+        Jiz collision_upper_handling  ; if y pos == 0, collision with ceiling
+        LdiL 47  ; max y pos (47)
+        Eq       ; checking if y pos == max
+        Jnz safe_from_collision_upper
+      !header collision_upper_handling
+        LdiL 1   ; reversing the y velocity
+        LodR rdj ; loading the sign
+        Sub      ; subtracting from 1
+        WrtO rdj ; saving the new sign
+      !header safe_from_collision_upper
+
+        ; checking collisions with paddles
+        LodL rda  ; loading x pos
+        LdiR 1    ; left paddle x pos
+        Eq        ; checking collision with left paddle
+        Jiz collision_sides_handling  ; if collision, handle it
+        LdiR 62   ; right paddle x pos
+        Eq        ; checking collision with right paddle
+        Jnz safe_from_collision_sides  ; if no collision, continue
+      !header collision_sides_handling
+          LodL rde  ; loading score
+          Inc       ; incrementing score
+          WrtO rde  ; saving the score
+          LdiL 1   ; reversing the x velocity
+          LodR rdi ; loading the sign
+          Sub      ; subtracting from 1
+          WrtO rdi ; saving the new sign
+            ; checking paddle position
+          LodL rdb  ; loading y pos
+          LodR rdf  ; loading current paddle pos
+          Eq        ; checking if ball is at edge of the paddle
+          Jiz edge  ; bouncing based on the edge
+          Less      ; ball y pos < paddle pos
+          Jiz end_of_main ; if true, die (ball is above paddle)
+          LdiL 3    ; paddle height
+          Add       ; paddle pos + 3
+          WrtO acc  ; saving to acc
+          LodL rdb  ; loading ball y pos
+          LodR acc  ; loading paddle pos + 3
+          Grtr      ; ball y pos > paddle pos + 3
+          Jiz end_of_main  ; if true, die (ball is below paddle)
+          ; changing y velocity by collision offset
+          Eq   ; rdb == rdf + 3
+          Ldi rdd 5  ; middle
+          Jnz done_with_bounce_size  ; if equal, it's the edge of the paddle
+        !header edge
+            Ldi rdd 9  ; top/bottom
+        !header done_with_bounce_size
+          Inc   ; ball_pos + 1
+          WrtO acc
+          LodL acc
+          ; ball pos + 1 < paddle + 3 aka ball y < paddle + 2 (center)
+          Less
+          Ldi rdj 1  ; upwards
+          Jiz safe_from_collision_sides
+            Ldi rdj 0  ; downwards
+      !header safe_from_collision_sides
+
+        ; todo! getting player input
+
+        ; clearing the old position if the paddle moved
+        ; checking if it went up (the bottom pixel needs clearing)
+        LodL rdm           ; original
+        LodR rdf           ; current
+        Eq                 ; checking equality
+        Jiz paddle_equal   ; if equal, no movement
+        Less               ; original < current (i.e. moved down)
+        LdiR 0       ; black (background color)
+        ThruR        ; moving to output
+        SetDspInCol  ; setting the color
+        SetDspInX    ; setting the x pos    the output is still 0
+        LdiR 3
+        Jiz paddle_down    ; if true, moved down
+          ; Paddle up goes here
+          ; clearing the bottom pixel (original + 3)
+          ; left reg already has the original paddle pos
+          Add        ; adding to get the bottom pixel  ( 3 is already set )
+          SetDspInY  ; setting the y pos
+          Plt        ; clearing the bottom pixel
+          LdiR 63    ; the right of the screen (right paddle)
+          ThruR      ; moving to output
+          SetDspInX  ; setting the x pos
+          Plt        ; clearing the bottom pixel
+          ; rendering the new pixel (current)
+          SetDspInCol  ; setting the color
+          LodL rdf     ; loading current paddle pos
+          ThruL        ; moving to output
+          SetDspInY    ; setting the y pos
+          Plt        ; rendering the new pixel on the right (63 is still set as the x)
+          LdiR 0     ; x pos (left paddle)
+          ThruR      ; moving to output
+          SetDspInX  ; setting the x pos
+          Plt        ; rendering the new pixel
+      !header paddle_down
+          ; clearing the top pixel (original)
+          ThruL      ; alu left already has the original paddle pos
+          SetDspInY  ; setting the y pos
+          Plt        ; clearing the top pixel
+          LdiL 63    ; the right of the screen (right paddle)
+          ThruL      ; moving to output
+          SetDspInX  ; setting the x pos
+          Plt        ; clearing the top pixel
+          ; render the new pixel (current + 3)
+          SetDspInCol  ; updating the color to white (already set in the output)
+          LodL rdf     ; loading current paddle pos
+          Add          ; adding 3 (already loaded to the right) to get the bottom pixel
+          SetDspInY    ; setting the y pos
+          Plt          ; plotting
+          LdiL 0       ; x pos (left paddle)
+          ThruL        ; moving to the output
+          SetDspInX    ; setting the x pos
+          Plt          ; plotting
+      !header paddle_equal
+        Jmp main_loop  ; repeating the main loop
+!header end_of_main
+    Kill   ; ending the cpu/program

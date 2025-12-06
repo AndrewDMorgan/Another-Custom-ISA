@@ -46,7 +46,7 @@ Jmp start
     !end loop_x_end
 
     LodL rdc      ; loading the loop counter
-    LdiR 255       ; the bound
+    LdiR 255      ; the bound
     Grtr          ; bounds check at 20
     Jiz loop_end  ; exit if done
     Inc           ; incrementing the loop counter
